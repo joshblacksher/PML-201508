@@ -1,0 +1,117 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Josh Blacksher"
+date: "August 2015"
+output: html_document
+---
+
+---
+
+# This document captures the final process I followed to complete the PML course project.
+
+---
+
+## Setup, load the data, and remove columns that are null in the testing set to remove useless complexity. Also remove the test id, time, window, and user variables; as they mess up the modeling.  
+
+```{r, warning=FALSE}
+library(caret)
+library(ggplot2)
+library(reshape2)
+
+setwd("~/GitHub/machinelearning")
+set.seed(1121)
+
+pml.training.csv <- read.csv("./pml-training.csv", na.strings=c("NA","","#DIV/0!"))
+pml.testing.csv <- read.csv("./pml-testing.csv", na.strings=c("NA","","#DIV/0!"))
+
+nullintesting <- sapply(pml.testing.csv, function(x)all(is.na(x)))
+pml.testing.csv.tight <- pml.testing.csv[,!nullintesting]
+pml.training.csv.tight <- pml.training.csv[,!nullintesting]
+
+pml.testing.csv.tight <- pml.testing.csv.tight[,8:60]
+pml.training.csv.tight <- pml.training.csv.tight[,8:60]
+
+### JUST FOR DEBUGGING ###
+#inTrain <- createDataPartition(y=pml.training.csv.tight$classe, p=0.20, list=FALSE)
+#pml.training.csv.tight <- pml.training.csv.tight[inTrain,]
+```
+
+## Take a quick look at the variables, just for fun really.  If I was preparing this for a management audience, they always love pretty graphs.  
+
+```{r, warning=FALSE}
+d <- melt(pml.training.csv.tight[,c(1:17,53)])
+ggplot(d,aes(x=value,color=classe)) + facet_wrap(~variable,scales="free") + geom_density()
+
+d <- melt(pml.training.csv.tight[,c(18:34,53)])
+ggplot(d,aes(x=value,color=classe)) + facet_wrap(~variable,scales="free") + geom_density()
+
+d <- melt(pml.training.csv.tight[,c(35:52,53)])
+ggplot(d,aes(x=value,color=classe)) + facet_wrap(~variable,scales="free") + geom_density()
+```
+
+## Run some machine learning algorithms.  Use **cross validation** against a held out sample to assess **out of sample error**.  Note that I ran other models in development, but only kept the good ones.
+
+```{r, warning=FALSE}
+inTrain <- createDataPartition(y=pml.training.csv.tight$classe, p=0.75, list=FALSE)
+training <- pml.training.csv.tight[inTrain,]
+testing <- pml.training.csv.tight[-inTrain,]
+
+rffit <- train(classe~., data=training, method="rf") # really slow!
+modfit <- rffit # make it easier to cut and paste later ;)
+
+pred <- predict(modfit,training)
+pred.right <- pred==training$classe
+sum(pred.right==TRUE)/length(pred.right) # check accurace (1 - in sample error)
+table(training$classe, pred)  # look at the details 
+
+pred2 <- predict(modfit,testing)
+pred2.right <- pred2==testing$classe
+sum(pred2.right==TRUE)/length(pred2.right) # check accurace (1 - out of sample error)
+table(testing$classe, pred2) # and the details
+```
+
+
+
+```{r, warning=FALSE}
+inTrain <- createDataPartition(y=pml.training.csv.tight$classe, p=0.75, list=FALSE)
+training <- pml.training.csv.tight[inTrain,]
+testing <- pml.training.csv.tight[-inTrain,]
+
+gbmfit <- train(classe~., data=training, method="gbm", verbose=FALSE) #slow but good fit
+modfit <- gbmfit
+
+pred <- predict(modfit,training)
+pred.right <- pred==training$classe
+sum(pred.right==TRUE)/length(pred.right) # check accurace (1 - in sample error)
+table(training$classe, pred)  # look at the details 
+
+pred2 <- predict(modfit,testing)
+pred2.right <- pred2==testing$classe
+sum(pred2.right==TRUE)/length(pred2.right) # check accurace (1 - out of sample error)
+table(testing$classe, pred2) # and the details
+```
+
+## Looking at the results for each model for the final 20 assignment questions.
+
+```{r, warning=FALSE}
+tt <- pml.testing.csv.tight[,1:52]
+tt.preds <- data.frame( predict(rffit,tt), predict(gbmfit,tt)) 
+tt.preds
+table(tt.preds)
+count(predict(rffit,tt) == predict(gbmfit,tt))
+```
+
+## As these are identical, there is no reason to build the ensemble model I was planning.  
+
+```{r, warning=FALSE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+answers <- as.character(tt.preds[,1])
+pml_write_files(answers)
+```
